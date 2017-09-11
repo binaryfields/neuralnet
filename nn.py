@@ -16,7 +16,7 @@ def relu_backward(dA, Z):
     return dZ
 
 
-def relu_derivative(z):
+def relu_derv(z):
     return np.where(z >= 0, 1.0, 0.0)
 
 
@@ -29,7 +29,7 @@ def sigmoid_backward(dA, z):
     return dA * s * (1 - s)
 
 
-def sigmoid_derivative(z):
+def sigmoid_derv(z):
     s = sigmoid(z)
     return s * (1 - s)
 
@@ -52,32 +52,6 @@ class GradDescentOptimizer:
         return params, costs
 
 
-class NnClassifier:
-    def __init__(self, model, optimizer):
-        self.model = model
-        self.optimizer = optimizer
-        self.params = None
-        self.lambdap = 1.0
-
-    def predict(self, X):
-        assert X.shape[0] == self.model.layers[0].dim
-        A = X
-        for l in range(1, len(self.model.layers)):
-            W, b = self.model._get_layer_params(self.params, l)
-            activation_f = self.model.layers[l].activation[0]
-            Z = W.dot(A) + b
-            A = activation_f(Z)
-        Y_pred = A > 0.5
-        assert Y_pred.shape == (1, X.shape[1])
-        return Y_pred
-
-    def train(self, X, Y):
-        def J(params): return self.model.cost(params, X, Y, self.lambdap)
-        guess = self.model.init_params()
-        self.params, costs = self.optimizer.optimize(J, guess)
-        return costs
-
-
 NnLayer = namedtuple('NnLayer', ['dim', 'activation'])
 
 
@@ -85,10 +59,10 @@ class NnModel:
     def __init__(self):
         self.layers = []
         # Compiled
-        self.layer_slices = []
+        self.layer_offsets = []
         self.activations = {
-            'relu': (relu, relu_backward),
-            'sigmoid': (sigmoid, sigmoid_backward)
+            'relu': (relu, relu_derv, relu_backward),
+            'sigmoid': (sigmoid, sigmoid_derv, sigmoid_backward)
         }
 
     def add(self, units, activation, input_dim=0):
@@ -98,88 +72,140 @@ class NnModel:
 
     def compile(self):
         offset = 0
-        for l in range(1, len(self.layers)):
-            w_slice = (offset, offset + self.layers[l - 1].dim * self.layers[l].dim)
-            b_slice = (w_slice[1], w_slice[1] + self.layers[l].dim)
-            self.layer_slices.append((w_slice, b_slice))
-            offset += self.layers[l - 1].dim * self.layers[l].dim + self.layers[l].dim
+        self.layer_offsets = [ (0, 0) ]
+        for layer in range(1, len(self.layers)):
+            prev_layer_dim = self.layers[layer - 1].dim
+            layer_dim = self.layers[layer].dim
+            w_offset = (offset, offset + prev_layer_dim * layer_dim)
+            b_offset = (w_offset[1], w_offset[1] + layer_dim)
+            self.layer_offsets.append((w_offset, b_offset))
+            offset += prev_layer_dim * layer_dim + layer_dim
 
-    def init_params(self, epsilon=0.01):
-        np.random.seed(1)
-        dim = 0
-        for l in range(1, len(self.layers)):
-            dim += self.layers[l].dim * \
-                self.layers[l - 1].dim + self.layers[l].dim
-        params = np.zeros(dim, dtype=np.float32)
-        for l in range(1, len(self.layers)):
-            W = np.random.randn(
-                self.layers[l].dim, self.layers[l - 1].dim) / np.sqrt(self.layers[l - 1].dim)  # * epsilon
-            b = np.zeros((self.layers[l].dim, 1), dtype=np.float32)
-            self._set_layer_params(params, l, W, b)
-        return params
+    def get_activation_fn(self, layer):
+        return self.layers[layer].activation[0]
 
-    def cost(self, params, X, Y, lambdap):
-        A, Z = self._propagate_forward(params, X)
-        cost = self._compute_cost(params, A[-1], Y, lambdap)
-        grad = self._propagate_backward(params, A, Z, Y, lambdap)
-        return cost, grad
+    def get_activation_backward(self, layer):
+        return self.layers[layer].activation[2]
 
-    def _compute_cost(self, params, AL, Y, lambdap):
-        m = AL.shape[1]
-        L = Y * np.log(AL) + (1. - Y) * np.log(1. - AL)
-        J = -(1. / m) * np.sum(L)
-        for l in range(1, len(self.layers)):
-            W, b = self._get_layer_params(params, l)
-            J += (lambdap / (2 * m)) * np.sum(np.square(W))
-        return np.squeeze(J)
+    def get_count(self):
+        return len(self.layers)
 
-    def _propagate_forward(self, params, X):
-        A = [X]
-        Z = [[]]
-        for l in range(1, len(self.layers)):
-            W, b = self._get_layer_params(params, l)
-            activation_f = self.layers[l].activation[0]
-            Z.append(W.dot(A[l - 1]) + b)
-            A.append(activation_f(Z[l]))
-            assert(A[l].shape == (self.layers[l].dim, X.shape[1]))
-        return A, Z
-
-    def _propagate_backward(self, params, A, Z, Y, lambdap):
-        m = A[-1].shape[1]
-        grad = np.zeros(params.shape, dtype=np.float32)
-        dA = -(np.divide(Y, A[-1]) - np.divide(1 - Y, 1 - A[-1]))
-        for l in reversed(range(1, len(self.layers))):
-            W, b = self._get_layer_params(params, l)
-            activation_df = self.layers[l].activation[1]
-            dZ = activation_df(dA, Z[l])
-            assert(dZ.shape == A[l].shape)
-            dA_prev, dW, db = self._linear_backward(dZ, A[l - 1], W, b, lambdap)
-            dA = dA_prev
-            self._set_layer_params(grad, l, dW, db)
-        return grad
-
-    def _linear_backward(self, dZ, A_prev, W, b, lambdap):
-        m = A_prev.shape[1]
-        dW = (1. / m) * np.dot(dZ, A_prev.T)
-        dW += ((lambdap / m) * W)
-        db = (1. / m) * np.sum(dZ, axis=1, keepdims=True)
-        dA_prev = np.dot(W.T, dZ)
-        return dA_prev, dW, db
-
-    def _get_layer_params(self, params, l):
-        w_slice, b_slice = self.layer_slices[l - 1]
-        W = params[w_slice[0]:w_slice[1], ...].reshape(
-            (self.layers[l].dim, self.layers[l - 1].dim))
-        b = params[b_slice[0]:b_slice[1], ...].reshape((self.layers[l].dim, 1))
+    def get_dim(self, layer):
+        return self.layers[layer].dim
+       
+    def get_params(self, layer, params):
+        prev_layer_dim = self.layers[layer - 1].dim
+        layer_dim = self.layers[layer].dim
+        w_offset, b_offset = self.layer_offsets[layer]
+        W = params[w_offset[0]:w_offset[1], ...].reshape((layer_dim, prev_layer_dim))
+        b = params[b_offset[0]:b_offset[1], ...].reshape((layer_dim, 1))
         return W, b
 
-    def _set_layer_params(self, params, l, W, b):
-        assert(W.shape == (self.layers[l].dim, self.layers[l - 1].dim))
-        assert(b.shape == (self.layers[l].dim, 1))
-        w_slice, b_slice = self.layer_slices[l - 1]
+    def set_params(self, layer, params, W, b):
+        assert(W.shape == (self.layers[layer].dim, self.layers[layer - 1].dim))
+        assert(b.shape == (self.layers[layer].dim, 1))
+        w_offset, b_offset = self.layer_offsets[layer]
         params = params.reshape((-1, 1))
-        params[w_slice[0]:w_slice[1], ...] = W.reshape((-1, 1))
-        params[b_slice[0]:b_slice[1], ...] = b.reshape((-1, 1))
+        params[w_offset[0]:w_offset[1], ...] = W.reshape((-1, 1))
+        params[b_offset[0]:b_offset[1], ...] = b.reshape((-1, 1))
+
+
+class NnClassifier:
+    def __init__(self, model, optimizer):
+        self.model = model
+        self.optimizer = optimizer
+        self.params = None
+        self.lambd = 1.0
+
+    def predict(self, X):
+        assert X.shape[0] == self.model.get_dim(0)
+        A = X
+        for layer in range(1, self.model.get_count()):
+            W, b = self.model.get_params(layer, self.params)
+            activation_fn = self.model.get_activation_fn(layer)
+            Z = np.dot(W, A) + b
+            A = activation_fn(Z)
+            assert A.shape == (self.model.get_dim(layer), X.shape[1])
+        Y_pred = A > 0.5
+        assert Y_pred.shape == (1, X.shape[1])
+        return Y_pred
+
+    def train(self, X, Y):
+        def J(params): return self._cost(params, X, Y)
+        guess = self._init_params()
+        self.params, costs = self.optimizer.optimize(J, guess)
+        return costs
+
+    def _init_params(self, epsilon=0.01):
+        np.random.seed(1)
+        dim = 0
+        for l in range(1, self.model.get_count()):
+            dim += self.model.get_dim(l) * self.model.get_dim(l - 1) + self.model.get_dim(l)
+        params = np.zeros(dim, dtype=np.float32)
+        for l in range(1, self.model.get_count()):
+            prev_layer_dim = self.model.get_dim(l - 1)
+            layer_dim = self.model.get_dim(l)
+            W = np.random.randn(layer_dim, prev_layer_dim) / np.sqrt(prev_layer_dim) 
+            b = np.zeros((layer_dim, 1), dtype=np.float32)
+            self.model.set_params(l, params, W, b)
+        return params
+
+    def _cost(self, params, X, Y):
+        A, Z = self._propagate_forward(params, X)
+        cost = self._compute_cost(params, A[-1], Y)
+        grad = self._propagate_backward(params, A, Z, Y)
+        return cost, grad
+
+    def _compute_cost(self, params, AL, Y):
+        m = AL.shape[1]
+        # loss (1 x m)
+        L = -(Y * np.log(AL) + (1 - Y) * np.log(1. - AL))
+        # cost (scalar)
+        J = (1. / m) * np.sum(L)
+        for layer in range(1, self.model.get_count()):
+            # weights (n[l] x n[l-1]), bias (n[l] x 1)
+            W, b = self.model.get_params(layer, params)
+            # regularized cost
+            J += (self.lambd / (2 * m)) * np.sum(np.square(W))
+        return J
+
+    def _propagate_forward(self, params, X):
+        A = [ X ]
+        Z = [ None ]
+        for layer in range(1, self.model.get_count()):
+            # weights (n[l] x n[l-1]), bias (n[l] x 1)
+            W, b = self.model.get_params(layer, params)
+            activation_fn = self.model.get_activation_fn(layer)
+            # activation[l] (n(l) x m)
+            Z.append(np.dot(W, A[layer - 1]) + b)
+            A.append(activation_fn(Z[layer]))
+            assert A[layer].shape == (self.model.get_dim(layer), X.shape[1])
+        return A, Z
+
+    def _propagate_backward(self, params, A, Z, Y):
+        m = A[-1].shape[1]
+        grad = np.zeros(params.shape, dtype=np.float32)
+        # dJ/dA (1 x m)
+        dA = -(np.divide(Y, A[-1]) - np.divide(1 - Y, 1 - A[-1]))
+        for layer in reversed(range(1, self.model.get_count())):
+            # weights (n[l] x n[l-1]), bias (n[l] x 1)
+            W, b = self.model.get_params(layer, params)
+            # dJ/dZ = dJ/dA * dA/dZ (n[l] x m)
+            dZ = self.model.get_activation_backward(layer)(dA, Z[layer])
+            assert dZ.shape == A[layer].shape
+            # dJ/dW = dJ/dZ * dZ/dW (dim TBD)
+            dW, db, dA_prev = self._linear_backward(dZ, A[layer - 1], W, b)
+            dA = dA_prev
+            self.model.set_params(layer, grad, dW, db)
+        return grad
+
+    def _linear_backward(self, dZ, A_prev, W, b):
+        m = A_prev.shape[1]
+        dW = (1. / m) * np.dot(dZ, A_prev.T)
+        dW += ((self.lambd / m) * W)
+        db = (1. / m) * np.sum(dZ, axis=1, keepdims=True)
+        dA_prev = np.dot(W.T, dZ)
+        return dW, db, dA_prev
 
 
 Dataset = namedtuple('Dataset', ['X', 'Y'])

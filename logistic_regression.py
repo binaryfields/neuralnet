@@ -1,4 +1,5 @@
 #%%
+
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,20 +41,12 @@ class LrClassifier:
         return Y_pred
 
     def train(self, X, Y):
-        cost_fn = lambda params: self._propagate(params, X, Y)
+        cost_fn = lambda params: self._cost(params, X, Y)
         guess = self._params_init(X.shape[0])
         self.params, costs = self.optimizer.optimize(cost_fn, guess)
         return costs
 
-    def _params_init(self, n):
-        return np.zeros((n + 1, 1), dtype=np.float32)
-
-    def _params_unpack(self, params):
-        w = params[:-1]
-        b = params[-1, 0]
-        return w, b
-
-    def _propagate(self, params, X, Y):
+    def _cost(self, params, X, Y):
         # weights (n x 1), bias (scalar)
         w, b = self._params_unpack(params)
         assert w.shape == (X.shape[0], 1)
@@ -81,6 +74,14 @@ class LrClassifier:
         grad = np.concatenate([dw, db])
         assert grad.shape == params.shape
         return np.squeeze(J), grad
+
+    def _params_init(self, n):
+        return np.zeros((n + 1, 1), dtype=np.float32)
+
+    def _params_unpack(self, params):
+        w = params[:-1]
+        b = params[-1, 0]
+        return w, b
 
     def _sigmoid(self, z):
         return 1. / (1. + np.exp(-z))
