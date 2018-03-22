@@ -1,5 +1,6 @@
 #%%
 import h5py
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import time
@@ -32,25 +33,32 @@ def sigmoid_derv(z):
     return a * (1 - a)
 
 
-class GradDescentOptimizer:
-    def __init__(self, iters, alpha, debug=False):
+class AdamOptimizer:
+    def __init__(self, alpha, beta_1=0.9, beta_2=0.999, epsilon=1e-8):
         self.alpha = alpha
-        self.debug = debug
-        self.iters = iters
+        self.beta_1 = beta_1
+        self.beta_2 = beta_2
+        self.epsilon = epsilon
+        # Runtime State
+        self.grad_velocity = None
+        self.grad_squares = None
+
+    def init(self, params):
+        self.grad_velocity = np.zeros(params.shape)
+        self.grad_squares = np.zeros(params.shape)
 
     def optimize(self, cost_fn, params):
-        costs = []
-        for i in range(self.iters):
-            cost, grad = cost_fn(params)
-            params = params - self.alpha * grad
-            if i % 100 == 0:
-                costs.append(cost)
-                if self.debug:
-                    print('cost[{}]: {}'.format(i, cost))
-        return params, costs
+        cost, grad = cost_fn(params)
+        self.grad_velocity = self.beta_1 * self.grad_velocity + (
+            1. - self.beta_1) * grad
+        self.grad_squares = self.beta_2 * self.grad_squares + (
+            1. - self.beta_2) * np.square(grad)
+        params = params - self.alpha * (self.grad_velocity / (
+            np.sqrt(self.grad_squares) + self.epsilon))
+        return params, cost
 
 
-NnLayer = namedtuple('NnLayer', ['dim', 'activation'])
+NnLayer = namedtuple('NnLayer', ['dim', 'activation', 'dropout'])
 
 
 class NnModel:
@@ -69,10 +77,11 @@ class NnModel:
     def __len__(self):
         return len(self.layers)
 
-    def add(self, units, activation, input_dim=0):
+    def add(self, units, activation, dropout=0, input_dim=0):
         if input_dim != 0 and not self.layers:
-            self.layers.append(NnLayer(input_dim, None))
-        self.layers.append(NnLayer(units, self.activations[activation]))
+            self.layers.append(NnLayer(input_dim, None, 0))
+        self.layers.append(
+            NnLayer(units, self.activations[activation], dropout))
 
     def compile(self):
         offset = 0
@@ -105,11 +114,21 @@ class NnModel:
 
 
 class NnClassifier:
-    def __init__(self, model, optimizer, lambd):
+    def __init__(self,
+                 model,
+                 optimizer,
+                 epochs,
+                 batch_size=64,
+                 lambd=0,
+                 debug=False):
         self.model = model
         self.optimizer = optimizer
-        self.params = None
+        self.batch_size = batch_size
+        self.debug = debug
+        self.epochs = epochs
         self.lambd = lambd
+        # Trained State
+        self.params = None
 
     def predict(self, X):
         assert X.shape[0] == self.model[0].dim
@@ -125,33 +144,29 @@ class NnClassifier:
         return Y_pred
 
     def train(self, X, Y):
-        def J(params):
-            return self._cost(params, X, Y)
-
-        guess = self._init_params()
-        self.params, costs = self.optimizer.optimize(J, guess)
+        costs = []
+        self.params = self._init_params()
+        self.optimizer.init(self.params)
+        seed = 10
+        for i in range(self.epochs):
+            cost = 0
+            seed += 1
+            batches = self._partition_batches(X, Y, self.batch_size)
+            for batch in batches:
+                (batch_X, batch_Y) = batch
+                cost_fn = lambda params: self._cost(params, batch_X, batch_Y)
+                self.params, batch_cost = self.optimizer.optimize(
+                    cost_fn, self.params)
+                cost += batch_cost / len(batches)
+            costs.append(cost)
+            if self.debug and i % 100 == 0:
+                print('cost[{}]: {}'.format(i, cost))
         return costs
 
-    def _init_params(self, epsilon=0.01):
-        np.random.seed(5)
-        dim = 0
-        for l in range(1, len(self.model)):
-            dim += self.model[l].dim * self.model[l - 1].dim
-            dim += self.model[l].dim
-        params = np.zeros(dim, dtype=np.float)
-        for l in range(1, len(self.model)):
-            prev_layer_dim = self.model[l - 1].dim
-            layer_dim = self.model[l].dim
-            W = np.random.randn(layer_dim, prev_layer_dim) * np.sqrt(
-                2. / prev_layer_dim)  #/ np.sqrt(prev_layer_dim)
-            b = np.zeros((layer_dim, 1), dtype=np.float)
-            self.model.pack_params(l, params, W, b)
-        return params
-
     def _cost(self, params, X, Y):
-        A, Z = self._propagate_forward(params, X)
+        A, Z, D = self._propagate_forward(params, X)
         cost = self._compute_cost(params, A[-1], Y)
-        grad = self._propagate_backward(params, A, Z, Y)
+        grad = self._propagate_backward(params, A, Z, D, Y)
         return cost, grad
 
     def _compute_cost(self, params, AL, Y):
@@ -170,6 +185,7 @@ class NnClassifier:
     def _propagate_forward(self, params, X):
         A = [X]
         Z = [None]
+        D = [None]
         for l in range(1, len(self.model)):
             layer = self.model[l]
             # weights (n[l] x n[l-1]), bias (n[l] x 1)
@@ -177,10 +193,18 @@ class NnClassifier:
             # activation[l] (n(l) x m)
             Z.append(np.dot(W, A[l - 1]) + b)
             A.append(layer.activation[0](Z[l]))
+            # dropout
+            if layer.dropout > 0:
+                D.append(
+                    np.random.random_sample(A[l].shape) < (1. - layer.dropout))
+                A[l] = A[l] * D[l]
+                A[l] = A[l] / (1. - layer.dropout)
+            else:
+                D.append(None)
             assert A[l].shape == (layer.dim, X.shape[1])
-        return A, Z
+        return A, Z, D
 
-    def _propagate_backward(self, params, A, Z, Y):
+    def _propagate_backward(self, params, A, Z, D, Y):
         m = A[-1].shape[1]
         grad = np.zeros(params.shape, dtype=np.float)
         # dJ/dA (1 x m)
@@ -190,6 +214,10 @@ class NnClassifier:
             layer = self.model[l]
             # weights (n[l] x n[l-1]), bias (n[l] x 1)
             W, b = self.model.unpack_params(l, params)
+            # dropout
+            if layer.dropout > 0:
+                dA = dA * D[l]
+                dA = dA / (1. - layer.dropout)
             # dJ/dZ = dJ/dA * dA/dZ (n[l] x m)
             dZ = layer.activation[2](dA, Z[l])
             assert dZ.shape == A[l].shape
@@ -206,6 +234,39 @@ class NnClassifier:
         db = (1. / m) * np.sum(dZ, axis=1, keepdims=True)
         dA_prev = np.dot(W.T, dZ)
         return dW, db, dA_prev
+
+    def _init_params(self, epsilon=0.01):
+        np.random.seed(5)
+        dim = 0
+        for l in range(1, len(self.model)):
+            dim += self.model[l].dim * self.model[l - 1].dim
+            dim += self.model[l].dim
+        params = np.zeros(dim, dtype=np.float)
+        for l in range(1, len(self.model)):
+            prev_layer_dim = self.model[l - 1].dim
+            layer_dim = self.model[l].dim
+            W = np.random.randn(layer_dim, prev_layer_dim) * np.sqrt(
+                2. / prev_layer_dim)  #/ np.sqrt(prev_layer_dim)
+            b = np.zeros((layer_dim, 1), dtype=np.float)
+            self.model.pack_params(l, params, W, b)
+        return params
+
+    def _partition_batches(self, X, Y, batch_size):
+        m = X.shape[1]
+        batches = []
+        n_batches = math.floor(m / batch_size)
+        permutation = list(np.random.permutation(m))
+        shuffled_X = X[:, permutation]
+        shuffled_Y = Y[:, permutation].reshape((1, m))
+        for k in range(n_batches):
+            batch_X = shuffled_X[:, k * batch_size:(k + 1) * batch_size]
+            batch_Y = shuffled_Y[:, k * batch_size:(k + 1) * batch_size]
+            batches.append((batch_X, batch_Y))
+        if m % batch_size != 0:
+            batch_X = shuffled_X[:, n_batches * batch_size:m]
+            batch_Y = shuffled_Y[:, n_batches * batch_size:m]
+            batches.append((batch_X, batch_Y))
+        return batches
 
 
 def load_dataset(file_name, prefix):
@@ -225,13 +286,14 @@ def main():
     print('{} X{} Y{}'.format('test', test_X.shape, test_Y.shape))
     # Train model
     model = NnModel()
-    model.add(16, 'relu', input_dim=train_X.shape[0])
-    model.add(16, 'relu')
-    model.add(16, 'relu')
-    model.add(1, 'sigmoid')
+    model.add(16, activation='relu', input_dim=train_X.shape[0], dropout=0)
+    model.add(16, activation='relu', dropout=0)
+    model.add(16, activation='relu', dropout=0)
+    model.add(1, activation='sigmoid')
     model.compile()
-    optimizer = GradDescentOptimizer(iters=3000, alpha=0.01, debug=True)
-    classifier = NnClassifier(model, optimizer, lambd=0.)
+    optimizer = AdamOptimizer(alpha=0.0001)
+    classifier = NnClassifier(
+        model, optimizer, epochs=1000, batch_size=256, lambd=1.8, debug=True)
     start = time.time()
     costs = classifier.train(train_X, train_Y)
     end = time.time()

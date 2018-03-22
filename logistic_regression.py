@@ -8,10 +8,10 @@ from collections import namedtuple
 
 
 class GradDescentOptimizer:
-    def __init__(self):
-        self.alpha = 0.005
-        self.debug = True
-        self.iters = 2000
+    def __init__(self, iters, alpha, debug=False):
+        self.alpha = alpha
+        self.debug = debug
+        self.iters = iters
 
     def optimize(self, cost_fn, params):
         costs = []
@@ -32,7 +32,7 @@ class LrClassifier:
         self.lambdap = 0.0
 
     def predict(self, X):
-        w, b = self._params_unpack(self.params)
+        w, b = self._unpack_params(self.params)
         assert X.shape[0] == w.shape[0]
         Z = np.dot(w.T, X) + b
         A = self._sigmoid(Z)
@@ -42,13 +42,13 @@ class LrClassifier:
 
     def train(self, X, Y):
         cost_fn = lambda params: self._cost(params, X, Y)
-        guess = self._params_init(X.shape[0])
+        guess = self._init_params(X.shape[0])
         self.params, costs = self.optimizer.optimize(cost_fn, guess)
         return costs
 
     def _cost(self, params, X, Y):
         # weights (n x 1), bias (scalar)
-        w, b = self._params_unpack(params)
+        w, b = self._unpack_params(params)
         assert w.shape == (X.shape[0], 1)
         # number of examples
         m = X.shape[1]
@@ -58,7 +58,7 @@ class LrClassifier:
         A = self._sigmoid(Z)
         # loss (1 x m)
         L = -(Y * np.log(A) + (1 - Y) * np.log(1. - A))
-        # cost (scalar)
+        # cross-entropy cost (scalar)
         J = (1. / m) * np.sum(L)
         # regularized cost
         J += (self.lambdap / (2 * m)) * np.sum(np.square(w))
@@ -73,13 +73,13 @@ class LrClassifier:
         # gradients ((n + 1) x 1)
         grad = np.concatenate([dw, db])
         assert grad.shape == params.shape
-        return np.squeeze(J), grad
+        return J, grad
 
-    def _params_init(self, n):
-        return np.zeros((n + 1, 1), dtype=np.float32)
+    def _init_params(self, n):
+        return np.zeros((n + 1, 1), dtype=np.float)
 
-    def _params_unpack(self, params):
-        w = params[:-1]
+    def _unpack_params(self, params):
+        w = params[:-1, ...]
         b = params[-1, 0]
         return w, b
 
@@ -92,10 +92,10 @@ Dataset = namedtuple('Dataset', ['X', 'Y'])
 
 def load_dataset(file_name, prefix):
     model = h5py.File(file_name, 'r')
-    X = np.array(model[prefix + '_x'][:], dtype=np.float32)
+    X = np.array(model[prefix + '_x'][:], dtype=np.float)
     X = X.reshape((X.shape[0], -1)).T
     X = X / 255
-    Y = np.array(model[prefix + '_y'][:], dtype=np.float32)
+    Y = np.array(model[prefix + '_y'][:], dtype=np.float)
     Y = Y.reshape((1, Y.shape[0]))
     return Dataset(X, Y)
 
@@ -106,7 +106,8 @@ def main():
     print('{} X{} Y{}'.format('train', ds_train.X.shape, ds_train.Y.shape))
     print('{} X{} Y{}'.format('test', ds_test.X.shape, ds_test.Y.shape))
     # Train model
-    classifier = LrClassifier(GradDescentOptimizer())
+    optimizer = GradDescentOptimizer(iters=2000, alpha=0.005, debug=True)
+    classifier = LrClassifier(optimizer)
     classifier.lambdap = 0.0
     start = time.time()
     costs = classifier.train(ds_train.X, ds_train.Y)
