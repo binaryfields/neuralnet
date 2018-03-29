@@ -12,10 +12,8 @@ Layer = namedtuple('Layer', ['kernel', 'weights', 'biases'])
 
 class Model:
     def __init__(self, n_features, n_labels, lambd=0.):
-        self.inputs = tf.placeholder(
-            tf.float32, [n_features, None], name='inputs')
-        self.labels = tf.placeholder(
-            tf.float32, [n_labels, None], name='labels')
+        self.inputs = tf.placeholder(tf.float32, shape=[n_features, None], name='inputs')
+        self.labels = tf.placeholder(tf.float32, shape=[n_labels, None], name='labels')
         self.lambd = tf.constant(lambd, dtype=tf.float32)
         self.logits = None
         self.loss = None
@@ -30,7 +28,7 @@ class Model:
             'W{}'.format(layer_id),
             shape=(units, inputs.shape[0]),
             initializer=tf.contrib.layers.xavier_initializer(seed=1))
-        biases = tf.get_variable(
+        biases = tf.get_variable( 
             'b{}'.format(layer_id),
             shape=(units, 1),
             initializer=tf.zeros_initializer())
@@ -115,10 +113,10 @@ def main():
     print('{} X{} Y{}'.format('test', test_x.shape, test_y.shape))
     # Model
     model = Model(
-        train_x.shape[0], train_y.shape[0], lambd=(2.0 / train_x.shape[1]))
-    model.add_dense_layer(16, activation=tf.nn.relu)
-    model.add_dense_layer(16, activation=tf.nn.relu)
-    model.add_dense_layer(16, activation=tf.nn.relu)
+        train_x.shape[0], train_y.shape[0], lambd=(2.5 / train_x.shape[1]))
+    model.add_dense_layer(50, activation=tf.nn.relu)
+    model.add_dense_layer(30, activation=tf.nn.relu)
+    model.add_dense_layer(10, activation=tf.nn.relu)
     model.add_dense_layer(1, activation=None)
     model.compile()
     # Train
