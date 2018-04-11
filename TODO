@@ -1,0 +1,5 @@
+# TODO
+
+- nn_tf: use scoped names
+- cnn_raw: impl net
+- cnn_tf_v3: switch to softmax

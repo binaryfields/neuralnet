@@ -7,30 +7,19 @@ from tensorflow.python.framework import ops
 
 def model_net(x, n_classes):
     with tf.variable_scope('convnet'):
-        conv_1 = tf.layers.conv2d(
-            x,
-            filters=8,
-            kernel_size=4,
-            activation=tf.nn.relu,
-            padding='SAME',
-            kernel_initializer=tf.contrib.layers.xavier_initializer(seed=0),
-            use_bias=False)
-        conv_1 = tf.layers.max_pooling2d(conv_1, 8, 8, padding='SAME')
-        conv_2 = tf.layers.conv2d(
-            conv_1,
-            filters=16,
-            kernel_size=2,
-            activation=tf.nn.relu,
-            padding='SAME',
-            kernel_initializer=tf.contrib.layers.xavier_initializer(seed=0),
-            use_bias=False)
-        conv_2 = tf.layers.max_pooling2d(conv_2, 4, 4, padding='SAME')
-        flatten_3 = tf.layers.flatten(conv_2)
-        out = tf.layers.dense(
-            flatten_3,
-            units=n_classes,
+        x = tf.layers.conv2d(
+            x, 8, 4, padding='same', activation=tf.nn.relu, use_bias=False,
             kernel_initializer=tf.contrib.layers.xavier_initializer(seed=0))
-        return out
+        x = tf.layers.max_pooling2d(x, 8, 8)
+        x = tf.layers.conv2d(
+            x, 16, 2, padding='same', activation=tf.nn.relu, use_bias=False,
+            kernel_initializer=tf.contrib.layers.xavier_initializer(seed=0))
+        x = tf.layers.max_pooling2d(x, 4, 4)
+        x = tf.layers.flatten(x)
+        x = tf.layers.dense(
+            x, units=n_classes,
+            kernel_initializer=tf.contrib.layers.xavier_initializer(seed=0))
+        return x
 
 
 def model_fn(features, labels, mode):
