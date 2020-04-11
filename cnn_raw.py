@@ -11,7 +11,7 @@ def col2im(im_col, height, width, channels):
     out = np.zeros((height, width, channels))
     for c in range(channels):
         im_ch = im_col[c, :]
-        assert im_ch.shape == (height * width, )
+        assert im_ch.shape == (height * width,)
         out[:, :, c] = np.reshape(im_ch, (height, width))
     return out
 
@@ -20,13 +20,12 @@ def im2col(im, fl_height, fl_width, stride):
     in_height, in_width, in_channels = im.shape
     out_height = (in_height - fl_height) // stride + 1
     out_width = (in_width - fl_width) // stride + 1
-    out = np.zeros((fl_height * fl_width * in_channels,
-                    out_height * out_width))
+    out = np.zeros((fl_height * fl_width * in_channels, out_height * out_width))
     for h in range(out_height):
         for w in range(out_width):
             h_s = h * stride
             w_s = w * stride
-            patch = im[h_s:h_s + fl_height, w_s:w_s + fl_width, ...]
+            patch = im[h_s : h_s + fl_height, w_s : w_s + fl_width, ...]
             assert patch.shape == (fl_height, fl_width, in_channels)
             out[:, h * out_width + w] = np.reshape(patch, -1)
     return out
@@ -69,11 +68,13 @@ def conv2d_backward(dout, cache):
                 for c in range(out_channels):
                     h_s = h * stride
                     w_s = w * stride
-                    patch = x_pad[i, h_s:h_s + fl_height, w_s:w_s + fl_width, :]
+                    patch = x_pad[i, h_s : h_s + fl_height, w_s : w_s + fl_width, :]
                     assert patch.shape == (fl_height, fl_width, in_channels)
-                    weights = filters[:,:,:,c]
+                    weights = filters[:, :, :, c]
                     assert weights.shape == (fl_height, fl_width, in_channels)
-                    dx_pad[i, h_s:h_s + fl_height, w_s:w_s + fl_width, :] += weights * dout[i, h, w, c]
+                    dx_pad[i, h_s : h_s + fl_height, w_s : w_s + fl_width, :] += (
+                        weights * dout[i, h, w, c]
+                    )
                     dw[:, :, :, c] += patch * dout[i, h, w, c]
                     db[:, :, :, c] += dout[i, h, w, c]
         dx[i, :, :, :] = dx_pad[i, pad:-pad, pad:-pad, :]
@@ -92,7 +93,7 @@ def pool_forward(x, window, stride, mode='max'):
                 for c in range(in_channels):
                     h_s = h * stride
                     w_s = w * stride
-                    patch = x[i, h_s:h_s + window[0], w_s:w_s + window[1], c]
+                    patch = x[i, h_s : h_s + window[0], w_s : w_s + window[1], c]
                     assert patch.shape == (window[0], window[1])
                     if mode == 'max':
                         out[i, h, w, c] = np.max(patch)
@@ -112,11 +113,12 @@ def pool_backward(dout, cache):
                 for c in range(channels):
                     h_s = h * stride
                     w_s = w * stride
-                    patch = x[i, h_s:h_s + window[0], w_s:w_s + window[1], c]
+                    patch = x[i, h_s : h_s + window[0], w_s : w_s + window[1], c]
                     assert patch.shape == (window[0], window[1])
-                    mask = (patch == np.max(patch))
-                    dx[i, h_s:h_s + window[0], w_s:w_s + window[1], c] += (
-                        mask * dout[i, h, w, c])
+                    mask = patch == np.max(patch)
+                    dx[i, h_s : h_s + window[0], w_s : w_s + window[1], c] += (
+                        mask * dout[i, h, w, c]
+                    )
     assert dx.shape == x.shape
     return dx
 
@@ -127,7 +129,7 @@ def load_dataset(file_name, prefix):
     # X = X.reshape((X.shape[0], -1)).T
     X = X / 255
     Y = np.array(model[prefix + '_y'][:], dtype=np.int)
-    #Y = Y.reshape((1, Y.shape[0]))
+    # Y = Y.reshape((1, Y.shape[0]))
     return (X, Y)
 
 

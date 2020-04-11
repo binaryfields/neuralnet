@@ -1,4 +1,7 @@
+checkpoints/
 datasets/
-.vscode/
+graphs/
+visualization/
 *.pyc
+word2vec_utils.py
 SCRATCHPAD

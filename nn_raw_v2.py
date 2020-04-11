@@ -1,4 +1,4 @@
-#%%
+# %%
 import h5py
 import math
 import matplotlib.pyplot as plt
@@ -6,79 +6,31 @@ import numpy as np
 import time
 from collections import namedtuple
 
-
-def relu(z):
-    return np.maximum(0, z)
-
-
-def relu_backward(dA, Z):
-    return np.multiply(dA, np.int64(Z > 0))
-
-
-def relu_derv(z):
-    return np.where(z >= 0, 1.0, 0.0)
-
-
-def sigmoid(z):
-    return 1. / (1. + np.exp(-z))
-
-
-def sigmoid_backward(dA, z):
-    a = sigmoid(z)
-    return dA * a * (1 - a)
-
-
-def sigmoid_derv(z):
-    a = sigmoid(z)
-    return a * (1 - a)
-
-
-class AdamOptimizer:
-    def __init__(self, alpha, beta_1=0.9, beta_2=0.999, epsilon=1e-8):
-        self.alpha = alpha
-        self.beta_1 = beta_1
-        self.beta_2 = beta_2
-        self.epsilon = epsilon
-        # Runtime State
-        self.grad_velocity = None
-        self.grad_squares = None
-
-    def init(self, params):
-        self.grad_velocity = np.zeros(params.shape)
-        self.grad_squares = np.zeros(params.shape)
-
-    def minimize(self, cost_fn, params):
-        cost, grad = cost_fn(params)
-        self.grad_velocity = self.beta_1 * self.grad_velocity + (
-            1. - self.beta_1) * grad
-        self.grad_squares = self.beta_2 * self.grad_squares + (
-            1. - self.beta_2) * np.square(grad)
-        params = params - self.alpha * (self.grad_velocity / (
-            np.sqrt(self.grad_squares) + self.epsilon))
-        return params, cost
-
+# Features
+# - dropout layer
+# - mini batch
+# - adam optimizer
 
 NnLayer = namedtuple('NnLayer', ['units', 'activation', 'dropout'])
 
 
 class NnModel:
-    def __init__(self, lambd = 0):
+    def __init__(self, lambd=0):
         self.lambd = lambd
         self.layers = []
-        # Compiled
+        # Compiled State
         self.layer_offsets = []
         self.activations = {
             'relu': (relu, relu_derv, relu_backward),
-            'sigmoid': (sigmoid, sigmoid_derv, sigmoid_backward)
+            'sigmoid': (sigmoid, sigmoid_derv, sigmoid_backward),
         }
-        # Trained
+        # Trained State
         self.params = None
 
     def add(self, units, activation, dropout=0, input_dim=0):
         if input_dim != 0 and not self.layers:
             self.layers.append(NnLayer(input_dim, None, 0))
-        self.layers.append(
-            NnLayer(units, self.activations[activation], dropout))
+        self.layers.append(NnLayer(units, self.activations[activation], dropout))
 
     def compile(self):
         offset = 0
@@ -90,8 +42,8 @@ class NnModel:
             b_offset = (w_offset[1], w_offset[1] + layer_dim)
             self.layer_offsets.append((w_offset, b_offset))
             offset += prev_layer_dim * layer_dim + layer_dim
-        
-    def init_params(self, epsilon=0.01):
+
+    def init_params(self):
         np.random.seed(5)
         dim = 0
         for l in range(1, len(self.layers)):
@@ -101,8 +53,7 @@ class NnModel:
         for l in range(1, len(self.layers)):
             prev_layer_dim = self.layers[l - 1].units
             layer_dim = self.layers[l].units
-            W = np.random.randn(layer_dim, prev_layer_dim) * np.sqrt(
-                2. / prev_layer_dim)  #/ np.sqrt(prev_layer_dim)
+            W = np.random.randn(layer_dim, prev_layer_dim) * np.sqrt(2.0 / prev_layer_dim)
             b = np.zeros((layer_dim, 1), dtype=np.float)
             self._pack_params(l, self.params, W, b)
 
@@ -128,13 +79,13 @@ class NnModel:
     def _compute_cost(self, params, AL, Y):
         m = AL.shape[1]
         # loss (1 x m)
-        L = -(Y * np.log(AL) + (1 - Y) * np.log(1. - AL))
+        L = -(Y * np.log(AL) + (1 - Y) * np.log(1.0 - AL))
         # cross-entropy cost (scalar)
-        J = (1. / m) * np.sum(L)
+        J = (1.0 / m) * np.sum(L)
+        # regularized cost
         for l in range(1, len(self.layers)):
             # weights (n[l] x n[l-1]), bias (n[l] x 1)
             W, b = self._unpack_params(l, params)
-            # regularized cost
             J += (self.lambd / (2 * m)) * np.sum(np.square(W))
         return J
 
@@ -151,10 +102,9 @@ class NnModel:
             A.append(layer.activation[0](Z[l]))
             # dropout
             if layer.dropout > 0:
-                D.append(
-                    np.random.random_sample(A[l].shape) < (1. - layer.dropout))
+                D.append(np.random.random_sample(A[l].shape) < (1.0 - layer.dropout))
                 A[l] = A[l] * D[l]
-                A[l] = A[l] / (1. - layer.dropout)
+                A[l] = A[l] / (1.0 - layer.dropout)
             else:
                 D.append(None)
             assert A[l].shape == (layer.units, X.shape[1])
@@ -164,8 +114,7 @@ class NnModel:
         m = A[-1].shape[1]
         grad = np.zeros(params.shape, dtype=np.float)
         # dJ/dA (1 x m)
-        dA = (-np.divide(Y, A[-1]) +
-            np.divide(1 - Y, np.maximum(1 - A[-1], 1e-8)))
+        dA = -np.divide(Y, A[-1]) + np.divide(1 - Y, np.maximum(1 - A[-1], 1e-8))
         for l in reversed(range(1, len(self.layers))):
             layer = self.layers[l]
             # weights (n[l] x n[l-1]), bias (n[l] x 1)
@@ -173,7 +122,7 @@ class NnModel:
             # dropout
             if layer.dropout > 0:
                 dA = dA * D[l]
-                dA = dA / (1. - layer.dropout)
+                dA = dA / (1.0 - layer.dropout)
             # dJ/dZ = dJ/dA * dA/dZ (n[l] x m)
             dZ = layer.activation[2](dA, Z[l])
             assert dZ.shape == A[l].shape
@@ -185,38 +134,31 @@ class NnModel:
 
     def _linear_backward(self, dZ, A_prev, W, b):
         m = A_prev.shape[1]
-        dW = (1. / m) * np.dot(dZ, A_prev.T)
+        dW = (1.0 / m) * np.dot(dZ, A_prev.T)
         dW += (self.lambd / m) * W
-        db = (1. / m) * np.sum(dZ, axis=1, keepdims=True)
+        db = (1.0 / m) * np.sum(dZ, axis=1, keepdims=True)
         dA_prev = np.dot(W.T, dZ)
         return dW, db, dA_prev
 
     def _pack_params(self, layer, params, W, b):
-        assert (W.shape == (self.layers[layer].units,
-                            self.layers[layer - 1].units))
-        assert (b.shape == (self.layers[layer].units, 1))
+        assert W.shape == (self.layers[layer].units, self.layers[layer - 1].units)
+        assert b.shape == (self.layers[layer].units, 1)
         w_offset, b_offset = self.layer_offsets[layer]
         params = params.reshape((-1, 1))
-        params[w_offset[0]:w_offset[1], ...] = W.reshape((-1, 1))
-        params[b_offset[0]:b_offset[1], ...] = b.reshape((-1, 1))
+        params[w_offset[0] : w_offset[1], ...] = W.reshape((-1, 1))
+        params[b_offset[0] : b_offset[1], ...] = b.reshape((-1, 1))
 
     def _unpack_params(self, layer, params):
         prev_layer_dim = self.layers[layer - 1].units
         layer_dim = self.layers[layer].units
         w_offset, b_offset = self.layer_offsets[layer]
-        W = params[w_offset[0]:w_offset[1], ...].reshape((layer_dim,
-                                                          prev_layer_dim))
-        b = params[b_offset[0]:b_offset[1], ...].reshape((layer_dim, 1))
+        W = params[w_offset[0] : w_offset[1], ...].reshape((layer_dim, prev_layer_dim))
+        b = params[b_offset[0] : b_offset[1], ...].reshape((layer_dim, 1))
         return W, b
 
 
 class NnTrainer:
-    def __init__(self,
-                 model,
-                 optimizer,
-                 epochs,
-                 batch_size=64,
-                 debug=False):
+    def __init__(self, model, optimizer, epochs, batch_size=64, debug=False):
         self.model = model
         self.optimizer = optimizer
         self.batch_size = batch_size
@@ -234,9 +176,11 @@ class NnTrainer:
             batches = self._partition_batches(x, y, self.batch_size)
             for batch in batches:
                 batch_x, batch_y = batch
-                cost_fn = lambda params: self.model.loss(params, batch_x, batch_y)
-                self.model.params, batch_cost = self.optimizer.minimize(
-                    cost_fn, self.model.params)
+
+                def cost_fn(params):
+                    return self.model.loss(params, batch_x, batch_y)
+
+                self.model.params, batch_cost = self.optimizer.minimize(cost_fn, self.model.params)
                 cost += batch_cost / len(batches)
             costs.append(cost)
             if self.debug and i % 100 == 0:
@@ -251,14 +195,64 @@ class NnTrainer:
         shuffled_x = x[:, permutation]
         shuffled_y = y[:, permutation].reshape((1, m))
         for k in range(n_batches):
-            batch_x = shuffled_x[:, k * batch_size:(k + 1) * batch_size]
-            batch_y = shuffled_y[:, k * batch_size:(k + 1) * batch_size]
+            batch_x = shuffled_x[:, k * batch_size : (k + 1) * batch_size]
+            batch_y = shuffled_y[:, k * batch_size : (k + 1) * batch_size]
             batches.append((batch_x, batch_y))
         if m % batch_size != 0:
-            batch_x = shuffled_x[:, n_batches * batch_size:m]
-            batch_y = shuffled_y[:, n_batches * batch_size:m]
+            batch_x = shuffled_x[:, n_batches * batch_size : m]
+            batch_y = shuffled_y[:, n_batches * batch_size : m]
             batches.append((batch_x, batch_y))
         return batches
+
+
+class AdamOptimizer:
+    def __init__(self, alpha, beta_1=0.9, beta_2=0.999, epsilon=1e-8):
+        self.alpha = alpha
+        self.beta_1 = beta_1
+        self.beta_2 = beta_2
+        self.epsilon = epsilon
+        # Runtime State
+        self.grad_velocity = None
+        self.grad_squares = None
+
+    def init(self, params):
+        self.grad_velocity = np.zeros(params.shape)
+        self.grad_squares = np.zeros(params.shape)
+
+    def minimize(self, cost_fn, params):
+        cost, grad = cost_fn(params)
+        self.grad_velocity = self.beta_1 * self.grad_velocity + (1.0 - self.beta_1) * grad
+        self.grad_squares = self.beta_2 * self.grad_squares + (1.0 - self.beta_2) * np.square(grad)
+        params = params - self.alpha * (
+            self.grad_velocity / (np.sqrt(self.grad_squares) + self.epsilon)
+        )
+        return params, cost
+
+
+def relu(z):
+    return np.maximum(0, z)
+
+
+def relu_backward(dA, Z):
+    return np.multiply(dA, np.int64(Z > 0))
+
+
+def relu_derv(z):
+    return np.where(z >= 0, 1.0, 0.0)
+
+
+def sigmoid(z):
+    return 1.0 / (1.0 + np.exp(-z))
+
+
+def sigmoid_backward(dA, z):
+    a = sigmoid(z)
+    return dA * a * (1 - a)
+
+
+def sigmoid_derv(z):
+    a = sigmoid(z)
+    return a * (1 - a)
 
 
 def load_dataset(file_name, prefix):
@@ -293,10 +287,12 @@ def main():
     # Evaluate
     Yp_train = model.predict(train_x)
     Yp_test = model.predict(test_x)
-    print('train accuracy: {} %, took {}'.format(
-        100 - np.mean(np.abs(Yp_train - train_y)) * 100, end - start))
-    print('test accuracy: {} %'.format(
-        100 - np.mean(np.abs(Yp_test - test_y)) * 100))
+    print(
+        'train accuracy: {} %, took {}'.format(
+            100 - np.mean(np.abs(Yp_train - train_y)) * 100, end - start
+        )
+    )
+    print('test accuracy: {} %'.format(100 - np.mean(np.abs(Yp_test - test_y)) * 100))
     # Plot cost
     plt.plot(np.squeeze(costs))
     plt.title('Learning rate = {}'.format(optimizer.alpha))
@@ -306,3 +302,6 @@ def main():
 
 
 main()
+
+
+# %%

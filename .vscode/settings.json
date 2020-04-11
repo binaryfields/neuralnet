@@ -1,0 +1,23 @@
+{
+    "editor.cursorBlinking": "expand",
+    "editor.formatOnPaste": false,
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveTimeout": 1500,
+    "editor.formatOnType": false,
+    "editor.minimap.enabled": false,
+    "editor.renderWhitespace": "boundary",
+    "python.autoComplete.addBrackets": true,
+    "python.autoComplete.showAdvancedMembers": true,
+    "python.formatting.blackArgs": [
+        "--skip-string-normalization",
+        "--line-length",
+        "99"
+    ],
+    "python.formatting.provider": "black",
+    "python.jediEnabled": false,
+    "python.languageServer": "Microsoft",
+    "python.testing.pytestEnabled": true,
+    "[html]": {
+        "editor.formatOnSave": false
+    },
+}

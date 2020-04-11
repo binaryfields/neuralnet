@@ -12,8 +12,8 @@ Layer = namedtuple('Layer', ['kernel', 'weights', 'biases'])
 
 class Model:
     def __init__(self, n_features, n_labels, lambd=0.0):
-        self.inputs = tf.placeholder(tf.float32, shape=[n_features, None], name='inputs')
-        self.labels = tf.placeholder(tf.float32, shape=[n_labels, None], name='labels')
+        self.inputs = tf.compat.v1.placeholder(tf.float32, shape=[n_features, None], name='inputs')
+        self.labels = tf.compat.v1.placeholder(tf.float32, shape=[n_labels, None], name='labels')
         self.lambd = tf.constant(lambd, dtype=tf.float32)
         self.logits = None
         self.loss = None
@@ -24,13 +24,15 @@ class Model:
     def add_dense_layer(self, units, activation):
         layer_id = len(self._layers)
         inputs = self._layers[layer_id - 1].kernel
-        weights = tf.get_variable(
+        weights = tf.compat.v1.get_variable(
             'W{}'.format(layer_id),
             shape=(units, inputs.shape[0]),
-            initializer=tf.contrib.layers.xavier_initializer(seed=1),
+            initializer=tf.compat.v1.keras.initializers.VarianceScaling(
+                scale=1.0, mode="fan_avg", distribution="uniform", seed=1
+            ),
         )
-        biases = tf.get_variable(
-            'b{}'.format(layer_id), shape=(units, 1), initializer=tf.zeros_initializer()
+        biases = tf.compat.v1.get_variable(
+            'b{}'.format(layer_id), shape=(units, 1), initializer=tf.compat.v1.zeros_initializer()
         )
         z = tf.add(tf.matmul(weights, inputs), biases)
         kernel = activation(z) if activation else z
@@ -54,14 +56,16 @@ class Model:
     def _compute_accuracy(self, logits, labels):
         predictions = tf.greater(tf.nn.sigmoid(logits), tf.constant(0.5))
         correct_prediction = tf.equal(tf.cast(predictions, tf.float32), labels)
-        return tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        return tf.reduce_mean(input_tensor=tf.cast(correct_prediction, tf.float32))
 
     def _compute_loss(self, logits, labels):
         loss = tf.nn.sigmoid_cross_entropy_with_logits(
-            logits=tf.transpose(logits), labels=tf.transpose(labels)
+            logits=tf.transpose(a=logits), labels=tf.transpose(a=labels)
         )
         l2_losses = [tf.nn.l2_loss(layer.weights) for layer in self._layers[1:-1]]
-        return tf.add(tf.reduce_mean(loss), tf.multiply(self.lambd, tf.add_n(l2_losses)))
+        return tf.add(
+            tf.reduce_mean(input_tensor=loss), tf.multiply(self.lambd, tf.add_n(l2_losses))
+        )
 
 
 class Trainer:
@@ -70,7 +74,7 @@ class Trainer:
         self._optimizer = optimizer
         self._debug = debug
         self._train_op = self._optimizer.minimize(
-            self._model.loss, global_step=tf.train.get_global_step()
+            self._model.loss, global_step=tf.compat.v1.train.get_global_step()
         )
 
     def train(self, session, features, labels, steps):
@@ -98,7 +102,7 @@ def load_dataset(file_name, prefix):
 
 def main():
     ops.reset_default_graph()
-    tf.set_random_seed(1)
+    tf.compat.v1.set_random_seed(1)
     # Dataset
     (train_x, train_y) = load_dataset('datasets/images_train.h5', 'train_set')
     (test_x, test_y) = load_dataset('datasets/images_test.h5', 'test_set')
@@ -112,11 +116,11 @@ def main():
     model.add_dense_layer(1, activation=None)
     model.compile()
     # Train
-    optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
+    optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=0.0001)
     trainer = Trainer(model, optimizer, debug=True)
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
     costs = []
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
         sess.run(init)
         start = time.time()
         costs = trainer.train(sess, train_x, train_y, 500)
@@ -134,6 +138,3 @@ def main():
 
 
 main()
-
-
-# %%

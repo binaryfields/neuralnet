@@ -1,5 +1,4 @@
 # TODO
 
-- nn_tf: use scoped names
-- cnn_raw: impl net
-- cnn_tf_v3: switch to softmax
+INFO:tensorflow:global_step/sec: 10.3519
+INFO:tensorflow:loss = 0.17927563, step = 401 (9.661 sec)
