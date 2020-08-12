@@ -1,4 +1,7 @@
 # TODO
 
-INFO:tensorflow:global_step/sec: 10.3519
-INFO:tensorflow:loss = 0.17927563, step = 401 (9.661 sec)
+- vision
+    - add lenet
+    - add vgg
+    - add resnet
+    - add inception

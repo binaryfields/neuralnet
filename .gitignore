@@ -2,6 +2,8 @@ checkpoints/
 datasets/
 graphs/
 visualization/
+.vscode/
+.pytest_cache/
 *.pyc
 word2vec_utils.py
 SCRATCHPAD
