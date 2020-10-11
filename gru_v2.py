@@ -1,3 +1,4 @@
+# %%
 import argparse
 import contextlib
 import io
@@ -10,7 +11,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
-NAME = 'gru_v3'
+NAME = 'gru_v2'
 
 
 ## model
@@ -36,9 +37,42 @@ def build_dataset(data, vocab, timesteps, stride):
     x = []
     y = []
     for i in range(0, len(data) - timesteps, stride):
-        x.append([vocab[c] for c in data[i : i + timesteps]])
+        data_slice = data[i : i + timesteps]
+        x.append([vocab[c] for c in data_slice])
         y.append(vocab[data[i + timesteps]])
-    return (x, y)
+    return tf.data.Dataset.from_tensor_slices((x, y))
+
+
+## sampling
+
+
+def sample(model, input, limit, vocab_size, t_x, seed=0):
+    output = list(input)
+    sentence = [0 for i in range(t_x)]
+    sentence[0 : len(input)] = input
+    for _ in range(limit):
+        x = sentence
+        x = tf.one_hot(x, vocab_size, axis=-1)
+        x = tf.reshape(x, [1, -1, vocab_size])
+        predictions = model.predict(x)
+        idx = np.random.choice(vocab_size, p=predictions[0])
+        output.append(idx)
+        sentence = sentence[1:] + [idx]
+        seed += 1
+    return output
+
+
+class Sampler(keras.callbacks.Callback):
+    def __init__(self, input, vocab_size, char_to_ix, ix_to_char):
+        super(Sampler, self).__init__()
+        self.input = [char_to_ix[c] for c in input]
+        self.vocab_size = vocab_size
+        self.ix_to_char = ix_to_char
+
+    def on_epoch_end(self, epoch, logs=None):
+        output = sample(self.model, self.input, 3 * T_X, self.vocab_size, T_X)
+        sentence = ''.join([self.ix_to_char[idx] for idx in output])
+        print('\n', sentence, '\n')
 
 
 ## utils
@@ -97,36 +131,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def sample(model, input, limit, vocab_size, t_x, seed=0):
-    output = list(input)
-    sentence = [0 for i in range(t_x)]
-    sentence[0 : len(input)] = input
-    for i in range(limit):
-        x = sentence
-        x = tf.one_hot(x, vocab_size, axis=-1)
-        x = tf.reshape(x, [1, -1, vocab_size])
-        predictions = model.predict(x)
-        idx = np.random.choice(vocab_size, p=predictions[0])
-        output.append(idx)
-        sentence = sentence[1:] + [idx]
-        seed += 1
-    return output
-
-
-class Sampler(keras.callbacks.Callback):
-    def __init__(self, input, vocab_size, char_to_ix, ix_to_char):
-        super(Sampler, self).__init__()
-        self.input = [char_to_ix[c] for c in input]
-        self.vocab_size = vocab_size
-        self.ix_to_char = ix_to_char
-
-    def on_epoch_end(self, epoch, logs=None):
-        if (epoch + 1) % 20 == 0:
-            output = sample(self.model, self.input, 3 * T_X, self.vocab_size, T_X)
-            sentence = ''.join([self.ix_to_char[idx] for idx in output])
-            print('\n', sentence, '\n')
-
-
 ## main
 
 
@@ -137,17 +141,20 @@ SAMPLE_INPUT = 'two households, both alike in dignity, '
 
 
 def main():
-    args = parse_args()
-
-    ckpt_full_path = os.path.join(args.model_dir, 'model.ckpt-{epoch:04d}')
-    export_path = os.path.join(args.model_dir, 'saved_model')
-
+    # args = parse_args()
+    args = {
+        'model_dir': 'models',
+        'train_epochs': 100,
+        'batch_size': 32,
+        'distribution_strategy': None,
+    }
     keras.backend.clear_session()
+    export_path = os.path.join(args['model_dir'], 'saved_model')
 
-    # distribution strategy
-    if args.distribution_strategy == 'tpu':
+    # distribution
+    if args['distribution_strategy'] == 'tpu':
         resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=args.tpu)
-        if args.tpu not in ('', 'local'):
+        if args['tpu'] not in ('', 'local'):
             tf.config.experimental_connect_to_cluster(resolver)
         tf.tpu.experimental.initialize_tpu_system(resolver)
         print("All devices: ", tf.config.list_logical_devices('TPU'))
@@ -157,24 +164,21 @@ def main():
         strategy_scope = contextlib.nullcontext()
 
     # dataset
-    data_path = './datasets/shakespeare.txt'
-    data = io.open(data_path, encoding='utf-8').read().lower()
+    data = io.open('./data/shakespeare.txt', encoding='utf-8').read().lower()
     vocab = sorted(list(set(data)))
     vocab_size = len(vocab)
     char_to_ix = dict((c, i) for i, c in enumerate(vocab))
     ix_to_char = dict((i, c) for i, c in enumerate(vocab))
 
-    inputs, labels = build_dataset(data, char_to_ix, T_X, stride=3)
-    dataset = tf.data.Dataset.from_tensor_slices((inputs, labels))
-    dataset = dataset.map(lambda x, y: (tf.one_hot(x, vocab_size, axis=-1), y))
-    dataset = dataset.shuffle(buffer_size=50000).repeat().batch(args.batch_size)
+    ds = build_dataset(data, char_to_ix, T_X, stride=3)
+    ds = ds.map(lambda x, y: (tf.one_hot(x, vocab_size, axis=-1), y))
+    ds = ds.shuffle(buffer_size=50000).batch(args['batch_size'])
 
     # model
     with strategy_scope:
-        optimizer = keras.optimizers.Adam(LEARNING_RATE)
         model = build_model(N_A, T_X, vocab_size)
         model.compile(
-            optimizer=optimizer,
+            optimizer=keras.optimizers.Adam(LEARNING_RATE),
             loss=keras.losses.SparseCategoricalCrossentropy(from_logits=False),
             metrics=['sparse_categorical_accuracy'],
         )
@@ -186,17 +190,16 @@ def main():
         # keras.callbacks.TensorBoard(log_dir=args.model_dir),
         Sampler(SAMPLE_INPUT, vocab_size, char_to_ix, ix_to_char),
     ]
-
-    history = model.fit(
-        dataset,
-        epochs=args.train_epochs,
-        steps_per_epoch=len(inputs) // args.batch_size,
-        callbacks=callbacks,
+    _ = model.fit(
+        ds,
+        epochs=args['train_epochs'],
         verbose=1,
+        callbacks=callbacks,
     )
-
     model.save(export_path, include_optimizer=False)
 
 
 if __name__ == '__main__':
     main()
+
+# %%

@@ -45,7 +45,10 @@ def conv2d_forward(x, filters, bias, stride, pad):
         im_pad = np.pad(im, ((pad, pad), (pad, pad), (0, 0)), 'constant')
         assert im_pad.shape == (in_height + 2 * pad, in_width + 2 * pad, in_channels)
         im_col = im2col(im_pad, fl_height, fl_width, stride)
-        assert im_col.shape == (fl_height * fl_width * in_channels, out_height * out_width)
+        assert im_col.shape == (
+            fl_height * fl_width * in_channels,
+            out_height * out_width,
+        )
         z = np.dot(weights, im_col) + bias.reshape(out_channels, 1)
         assert z.shape == (out_channels, out_height * out_width)
         out[i, :, :, :] = col2im(z, out_height, out_width, out_channels)
@@ -134,8 +137,8 @@ def load_dataset(file_name, prefix):
 
 
 def main():
-    (train_X, train_Y) = load_dataset('datasets/images_train.h5', 'train_set')
-    (test_X, test_Y) = load_dataset('datasets/images_test.h5', 'test_set')
+    (train_X, train_Y) = load_dataset('data/images_train.h5', 'train_set')
+    (test_X, test_Y) = load_dataset('data/images_test.h5', 'test_set')
     print('{} X{} Y{}'.format('train', train_X.shape, train_Y.shape))
     print('{} X{} Y{}'.format('test', test_X.shape, test_Y.shape))
 

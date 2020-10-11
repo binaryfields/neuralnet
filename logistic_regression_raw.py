@@ -79,8 +79,11 @@ class GradDescentOptimizer:
 
 
 def load_dataset():
-    for (file_name, prefix) in [('images_train.h5', 'train_set'), ('images_test.h5', 'test_set')]:
-        model = h5py.File(f'datasets/{file_name}', 'r')
+    for (file_name, prefix) in [
+        ('images_train.h5', 'train_set'),
+        ('images_test.h5', 'test_set'),
+    ]:
+        model = h5py.File(f'data/{file_name}', 'r')
         x = np.array(model[prefix + '_x'][:], dtype=np.float32)
         x = x.reshape((x.shape[0], -1)).T
         x = x / 255
@@ -120,7 +123,9 @@ def main():
     # evaluate
     Yp_train = model.predict(train_ds[0])
     Yp_test = model.predict(test_ds[0])
-    print('train accuracy: {} %'.format(100 - np.mean(np.abs(Yp_train - train_ds[1])) * 100))
+    print(
+        'train accuracy: {} %'.format(100 - np.mean(np.abs(Yp_train - train_ds[1])) * 100)
+    )
     print('test accuracy: {} %'.format(100 - np.mean(np.abs(Yp_test - test_ds[1])) * 100))
 
     # summary

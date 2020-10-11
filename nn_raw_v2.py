@@ -180,7 +180,9 @@ class NnTrainer:
                 def cost_fn(params):
                     return self.model.loss(params, batch_x, batch_y)
 
-                self.model.params, batch_cost = self.optimizer.minimize(cost_fn, self.model.params)
+                self.model.params, batch_cost = self.optimizer.minimize(
+                    cost_fn, self.model.params
+                )
                 cost += batch_cost / len(batches)
             costs.append(cost)
             if self.debug and i % 100 == 0:
@@ -222,7 +224,9 @@ class AdamOptimizer:
     def minimize(self, cost_fn, params):
         cost, grad = cost_fn(params)
         self.grad_velocity = self.beta_1 * self.grad_velocity + (1.0 - self.beta_1) * grad
-        self.grad_squares = self.beta_2 * self.grad_squares + (1.0 - self.beta_2) * np.square(grad)
+        self.grad_squares = self.beta_2 * self.grad_squares + (
+            1.0 - self.beta_2
+        ) * np.square(grad)
         params = params - self.alpha * (
             self.grad_velocity / (np.sqrt(self.grad_squares) + self.epsilon)
         )
@@ -267,8 +271,8 @@ def load_dataset(file_name, prefix):
 
 def main():
     # Dataset
-    (train_x, train_y) = load_dataset('datasets/images_train.h5', 'train_set')
-    (test_x, test_y) = load_dataset('datasets/images_test.h5', 'test_set')
+    (train_x, train_y) = load_dataset('data/images_train.h5', 'train_set')
+    (test_x, test_y) = load_dataset('data/images_test.h5', 'test_set')
     print('{} X{} Y{}'.format('train', train_x.shape, train_y.shape))
     print('{} X{} Y{}'.format('test', test_x.shape, test_y.shape))
     # Model

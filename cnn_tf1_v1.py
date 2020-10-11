@@ -19,7 +19,9 @@ learning_rate = 0.001
 n_epochs = 500
 
 
-def conv2d_layer(x, filters, ksize, strides=(1, 1), padding='SAME', activation=None, scope=None):
+def conv2d_layer(
+    x, filters, ksize, strides=(1, 1), padding='SAME', activation=None, scope=None
+):
     with tf.variable_scope(scope):
         weights = tf.get_variable(
             'weights',
@@ -27,7 +29,9 @@ def conv2d_layer(x, filters, ksize, strides=(1, 1), padding='SAME', activation=N
             dtype=tf.float32,
             initializer=tf2.keras.initializers.GlorotNormal(seed=0),
         )
-        out = tf.nn.conv2d(x, weights, strides=[1, strides[0], strides[1], 1], padding=padding)
+        out = tf.nn.conv2d(
+            x, weights, strides=[1, strides[0], strides[1], 1], padding=padding
+        )
         return activation(out) if activation else out
 
 
@@ -69,8 +73,11 @@ def model_fn(x, n_classes, mode):
 
 
 def load_dataset():
-    for (file_name, prefix) in [('images_train.h5', 'train_set'), ('images_test.h5', 'test_set')]:
-        model = h5py.File(f'datasets/{file_name}', 'r')
+    for (file_name, prefix) in [
+        ('images_train.h5', 'train_set'),
+        ('images_test.h5', 'test_set'),
+    ]:
+        model = h5py.File(f'data/{file_name}', 'r')
         x = np.array(model[prefix + '_x'][:], dtype=np.float32)
         x = x / 255
         y = np.array(model[prefix + '_y'][:], dtype=np.int32)
@@ -100,7 +107,9 @@ def main():
     prediction = tf.greater(tf.nn.sigmoid(logits), tf.constant(0.5))
     correct_prediction = tf.equal(tf.cast(prediction, tf.float32), labels)
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=labels))
+    loss = tf.reduce_mean(
+        tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=labels)
+    )
     train_op = optimizer.minimize(loss)
     init = tf.global_variables_initializer()
 
@@ -110,7 +119,9 @@ def main():
         sess.run(init)
         start_time = time.time()
         for step in range(n_epochs):
-            _, cost = sess.run([train_op, loss], {features: train_ds[0], labels: train_ds[1]})
+            _, cost = sess.run(
+                [train_op, loss], {features: train_ds[0], labels: train_ds[1]}
+            )
             costs.append(cost)
             if (step + 1) % 100 == 0:
                 print(f'cost[{step+1}]: {cost}')

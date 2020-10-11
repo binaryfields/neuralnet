@@ -34,7 +34,11 @@ class LinRegModel(object):
 def main():
     # dataset
     data = np.loadtxt(
-        './datasets/birth_life_2010.txt', delimiter='\t', skiprows=1, usecols=(1, 2), unpack=True
+        './data/birth_life_2010.txt',
+        delimiter='\t',
+        skiprows=1,
+        usecols=(1, 2),
+        unpack=True,
     )
     x_train = data[0, :].reshape(1, -1)
     y_train = data[1, :].reshape(1, -1)

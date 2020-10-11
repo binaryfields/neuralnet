@@ -12,8 +12,12 @@ Layer = namedtuple('Layer', ['kernel', 'weights', 'biases'])
 
 class Model:
     def __init__(self, n_features, n_labels, lambd=0.0):
-        self.inputs = tf.compat.v1.placeholder(tf.float32, shape=[n_features, None], name='inputs')
-        self.labels = tf.compat.v1.placeholder(tf.float32, shape=[n_labels, None], name='labels')
+        self.inputs = tf.compat.v1.placeholder(
+            tf.float32, shape=[n_features, None], name='inputs'
+        )
+        self.labels = tf.compat.v1.placeholder(
+            tf.float32, shape=[n_labels, None], name='labels'
+        )
         self.lambd = tf.constant(lambd, dtype=tf.float32)
         self.logits = None
         self.loss = None
@@ -32,7 +36,9 @@ class Model:
             ),
         )
         biases = tf.compat.v1.get_variable(
-            'b{}'.format(layer_id), shape=(units, 1), initializer=tf.compat.v1.zeros_initializer()
+            'b{}'.format(layer_id),
+            shape=(units, 1),
+            initializer=tf.compat.v1.zeros_initializer(),
         )
         z = tf.add(tf.matmul(weights, inputs), biases)
         kernel = activation(z) if activation else z
@@ -45,7 +51,9 @@ class Model:
         self.accuracy = self._compute_accuracy(self.logits, self.labels)
 
     def evaluate(self, session, features, labels):
-        return session.run(self.accuracy, feed_dict={self.inputs: features, self.labels: labels})
+        return session.run(
+            self.accuracy, feed_dict={self.inputs: features, self.labels: labels}
+        )
 
     def predict(self, session, features):
         return session.run(
@@ -64,7 +72,8 @@ class Model:
         )
         l2_losses = [tf.nn.l2_loss(layer.weights) for layer in self._layers[1:-1]]
         return tf.add(
-            tf.reduce_mean(input_tensor=loss), tf.multiply(self.lambd, tf.add_n(l2_losses))
+            tf.reduce_mean(input_tensor=loss),
+            tf.multiply(self.lambd, tf.add_n(l2_losses)),
         )
 
 
@@ -104,8 +113,8 @@ def main():
     ops.reset_default_graph()
     tf.compat.v1.set_random_seed(1)
     # Dataset
-    (train_x, train_y) = load_dataset('datasets/images_train.h5', 'train_set')
-    (test_x, test_y) = load_dataset('datasets/images_test.h5', 'test_set')
+    (train_x, train_y) = load_dataset('data/images_train.h5', 'train_set')
+    (test_x, test_y) = load_dataset('data/images_test.h5', 'test_set')
     print('{} X{} Y{}'.format('train', train_x.shape, train_y.shape))
     print('{} X{} Y{}'.format('test', test_x.shape, test_y.shape))
     # Model

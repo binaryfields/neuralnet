@@ -43,7 +43,9 @@ class Model:
         self.accuracy = self._compute_accuracy(self.logits, self.labels)
 
     def evaluate(self, session, features, labels):
-        return session.run(self.accuracy, feed_dict={self.inputs: features, self.labels: labels})
+        return session.run(
+            self.accuracy, feed_dict={self.inputs: features, self.labels: labels}
+        )
 
     def predict(self, session, features):
         return session.run(
@@ -100,8 +102,8 @@ def main():
     ops.reset_default_graph()
     tf.set_random_seed(1)
     # Dataset
-    (train_x, train_y) = load_dataset('datasets/images_train.h5', 'train_set')
-    (test_x, test_y) = load_dataset('datasets/images_test.h5', 'test_set')
+    (train_x, train_y) = load_dataset('data/images_train.h5', 'train_set')
+    (test_x, test_y) = load_dataset('data/images_test.h5', 'test_set')
     print('{} X{} Y{}'.format('train', train_x.shape, train_y.shape))
     print('{} X{} Y{}'.format('test', test_x.shape, test_y.shape))
     # Model

@@ -54,9 +54,15 @@ class RnnModel(object):
             self.ba = tf.Variable(tf.zeros([1, n_a], dtype=tf.float64), name="ba")
             self.by = tf.Variable(tf.zeros([1, n_y], dtype=tf.float64), name="by")
         else:
-            self.wax = tf.Variable(np.random.randn(n_a, n_x).T, dtype=tf.float64, name="wax")
-            self.waa = tf.Variable(np.random.randn(n_a, n_a).T, dtype=tf.float64, name="waa")
-            self.wya = tf.Variable(np.random.randn(n_y, n_a).T, dtype=tf.float64, name="wya")
+            self.wax = tf.Variable(
+                np.random.randn(n_a, n_x).T, dtype=tf.float64, name="wax"
+            )
+            self.waa = tf.Variable(
+                np.random.randn(n_a, n_a).T, dtype=tf.float64, name="waa"
+            )
+            self.wya = tf.Variable(
+                np.random.randn(n_y, n_a).T, dtype=tf.float64, name="wya"
+            )
             self.ba = tf.Variable(np.random.randn(n_a, 1).T, dtype=tf.float64, name="ba")
             self.by = tf.Variable(np.random.randn(n_y, 1).T, dtype=tf.float64, name="by")
         self.trainable_variables = [self.wax, self.waa, self.wya, self.ba, self.by]
@@ -150,7 +156,7 @@ SKIP_SAMPLES = 7
 
 def main():
     # dataset
-    data = io.open('datasets/names2.txt', encoding='utf-8').read().lower()
+    data = io.open('data/names2.txt', encoding='utf-8').read().lower()
     vocab = sorted(list(set(data)))
     vocab_size = len(vocab)
     char_to_ix = dict((c, i) for i, c in enumerate(vocab))

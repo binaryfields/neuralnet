@@ -200,8 +200,8 @@ def load_dataset(file_name, prefix):
 
 def main():
     # Dataset
-    train_x, train_y = load_dataset('datasets/images_train.h5', 'train_set')
-    test_x, test_y = load_dataset('datasets/images_test.h5', 'test_set')
+    train_x, train_y = load_dataset('data/images_train.h5', 'train_set')
+    test_x, test_y = load_dataset('data/images_test.h5', 'test_set')
     print('{} X{} Y{}'.format('train', train_x.shape, train_y.shape))
     print('{} X{} Y{}'.format('test', test_x.shape, test_y.shape))
     # Model

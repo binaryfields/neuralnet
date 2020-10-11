@@ -1,9 +1,9 @@
 # %%
-import numpy as np
-import tensorflow as tf
 import io
 import time
 
+import numpy as np
+import tensorflow as tf
 
 ## layers
 
@@ -57,7 +57,7 @@ class Dropout(Layer):
 
 class Gru(Layer):
     """Fully connected RNN layer where output is fed back to input
-    
+
     Call Arguments:
     * x - input tensor with shape (m, t_x, n_x]
     * a0 - initial state tensor used by the first cell [m, n_a]
@@ -114,8 +114,8 @@ class Gru(Layer):
 
     def __call__(self, x, a0):
         m, t_x, _ = x.shape
-        outputs = []
         ct = a0 if a0 != None else tf.zeros([m, self.units])
+        outputs = []
         for t in range(t_x):
             xt = x[:, t, :]
             ct = self._step_forward(xt, ct)
@@ -127,11 +127,15 @@ class Gru(Layer):
             return output
 
     def _step_forward(self, xt, c_prev):
+        # update gate (0 or 1 in most cases)
         g_u = self.recurrent_activation(c_prev @ self.wuc + xt @ self.wux + self.bu)
+        # relevance gate
         g_r = self.recurrent_activation(c_prev @ self.wrc + xt @ self.wrx + self.br)
+        # cell candidate
         ct_candidate = self.activation(
             (g_r * c_prev) @ self.wcc + xt @ self.wcx + self.bc
         )
+        # memory cell
         ct = g_u * ct_candidate + (1 - g_u) * c_prev
         return ct
 
@@ -172,26 +176,20 @@ class RnnModel(object):
         print(f'Trainable params: {total_params}')
 
 
-@tf.function
-def train_step(model, optimizer, x, y, a_prev, grad_clip):
-    with tf.GradientTape() as tape:
-        logits, a_last = model(x, a_prev)
-        entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=logits)
-        loss = tf.reduce_mean(entropy)
-    gradients = tape.gradient(loss, model.trainable_variables)
-    gradients = [tf.clip_by_value(g, -grad_clip, grad_clip) for g in gradients]
-    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-    return loss, gradients, a_last
-
-
 ## dataset
 
 
 def build_dataset(data, vocab, t_x, stride):
+    x = []
+    y = []
     for i in range(0, len(data) - t_x, stride):
-        x = [vocab[c] for c in data[i : i + t_x]]
-        y = vocab[data[i + t_x]]
-        yield (x, y)
+        data_slice = data[i : i + t_x]
+        x.append([vocab[c] for c in data_slice])
+        y.append(vocab[data[i + t_x]])
+    return tf.data.Dataset.from_tensor_slices((x, y))
+
+
+## sampling
 
 
 def sample(model, input, limit, t_x, seed=0):
@@ -224,32 +222,36 @@ LEARNING_RATE = 0.003
 N_EPOCHS = 100  # 1000
 BATCH_SIZE = 128
 GRAD_CLIP = 5.0
-SKIP_STEP = 100
-SAMPLE_STEP = 1000
+SAMPLE_STEP = 1
 
 INPUT = 'two households, both alike in dignity, '
 
 
+@tf.function
+def train_step(model, optimizer, x, y, a_prev, grad_clip):
+    with tf.GradientTape() as tape:
+        logits, a_last = model(x, a_prev)
+        entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=logits)
+        loss = tf.reduce_mean(entropy)
+    gradients = tape.gradient(loss, model.trainable_variables)
+    gradients = [tf.clip_by_value(g, -grad_clip, grad_clip) for g in gradients]
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    return loss, gradients, a_last
+
+
 def main():
     # dataset
-    data = io.open('./datasets/shakespeare.txt', encoding='utf-8').read().lower()
+    data = io.open('./data/shakespeare.txt', encoding='utf-8').read().lower()
     vocab = sorted(list(set(data)))
     vocab_size = len(vocab)
     char_to_ix = dict((c, i) for i, c in enumerate(vocab))
     ix_to_char = dict((i, c) for i, c in enumerate(vocab))
 
-    def gen_dataset():
-        yield from build_dataset(data, char_to_ix, T_X, stride=3)
-
-    dataset = tf.data.Dataset.from_generator(
-        generator=gen_dataset,
-        output_types=(tf.int32, tf.int32),
-        output_shapes=((T_X,), ()),
-    )
-    dataset = dataset.map(
+    ds = build_dataset(data, char_to_ix, T_X, stride=3)
+    ds = ds.map(
         lambda x, y: (tf.one_hot(x, vocab_size, axis=-1), tf.one_hot(y, vocab_size))
     )
-    dataset = dataset.batch(BATCH_SIZE)
+    ds = ds.batch(BATCH_SIZE)
 
     # model
     model = RnnModel(N_A, vocab_size)
@@ -260,29 +262,30 @@ def main():
     writer = tf.summary.create_file_writer(
         'graphs/lstm_v1/lr' + str(optimizer.learning_rate.numpy())
     )
-    start_time = time.time()
-    step = 0
     a = None
-
-    for _ in range(N_EPOCHS):
-        for (x, y) in dataset:
+    skip_step = round(len(ds) / 10, -1)
+    start_time = time.time()
+    for n in range(1, N_EPOCHS + 1):
+        print(f'Epoch {n}/{N_EPOCHS}')
+        step = 0
+        total_loss = 0
+        for (x, y) in ds:
             a = a if a != None and a.shape[0] == x.shape[0] else None
             loss, _, a = train_step(model, optimizer, x, y, a, GRAD_CLIP)
-            with writer.as_default():
-                tf.summary.scalar('loss', loss, step=step)
-                writer.flush()
-            if step % SKIP_STEP == 0:
-                print(f'global_step/sec: {step / (time.time() - start_time)}')
-                print(f'loss = {loss}, step = {step}')
-            if step % SAMPLE_STEP == 0:
-                output = sample(model, [char_to_ix[c] for c in INPUT], T_X, T_X)
-                output = [ix_to_char[idx] for idx in output]
-                print(''.join(output))
-                print('\n')
             step += 1
-
+            total_loss += loss
+            if step % skip_step == 0 or step == len(ds):
+                print(f'{step}/{len(ds)} - loss: {(total_loss/step):.4f}')
+        with writer.as_default():
+            tf.summary.scalar('loss', total_loss / step, step=n)
+            writer.flush()
+        if n % SAMPLE_STEP == 0:
+            output = sample(model, [char_to_ix[c] for c in INPUT], T_X, T_X)
+            output = [ix_to_char[idx] for idx in output]
+            print(''.join(output))
+            print('\n')
     end_time = time.time()
-    print(f'total time: {end_time - start_time}s')
+    print(f'Training time: {end_time - start_time}s')
     writer.close()
 
 

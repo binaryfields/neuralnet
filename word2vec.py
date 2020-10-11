@@ -13,19 +13,17 @@ import time
 import word2vec_utils
 
 
-# hyperparams
 VOCAB_SIZE = 50000
 BATCH_SIZE = 128
 EMBED_SIZE = 128  # dimension of the word embedding vectors
 SKIP_WINDOW = 1  # the context window
+N_EPOCHS = 50000
 NUM_SAMPLED = 64  # number of negative examples to sample
 LEARNING_RATE = 1.0
-NUM_TRAIN_STEPS = 100000
 VISUAL_FLD = 'visualization'
 SKIP_STEP = 5000
 
 
-# model
 class Word2Vec(object):
     def __init__(self, vocab_size, embed_size, num_sampled):
         self.vocab_size = vocab_size
@@ -35,7 +33,9 @@ class Word2Vec(object):
             tf.random.uniform([vocab_size, embed_size]), name='embed_matrix'
         )
         self.nce_weights = tf.Variable(
-            tf.random.truncated_normal([vocab_size, embed_size], stddev=1.0 / (embed_size ** 0.5)),
+            tf.random.truncated_normal(
+                [vocab_size, embed_size], stddev=1.0 / (embed_size ** 0.5)
+            ),
             name='nce_weights',
         )
         self.nce_bias = tf.Variable(tf.zeros([vocab_size]), 'nce_bias')
@@ -56,6 +56,12 @@ class Word2Vec(object):
         return loss
 
 
+def generate_dataset():
+    yield from word2vec_utils.batch_gen(
+        './data/text8.zip', VOCAB_SIZE, BATCH_SIZE, SKIP_WINDOW, VISUAL_FLD
+    )
+
+
 @tf.function
 def train_step(optimizer, model, center_words, target_words):
     with tf.GradientTape() as tape:
@@ -65,53 +71,41 @@ def train_step(optimizer, model, center_words, target_words):
     return loss
 
 
-def gen():
-    yield from word2vec_utils.batch_gen(
-        './datasets/text8.zip', VOCAB_SIZE, BATCH_SIZE, SKIP_WINDOW, VISUAL_FLD
-    )
-
-
 def main():
     # dataset
-    print('loading data ...')
-    dataset = tf.data.Dataset.from_generator(
-        generator=gen,
+    print('Loading data ...')
+    ds = tf.data.Dataset.from_generator(
+        generator=generate_dataset,
         output_types=(tf.int32, tf.int32),
         output_shapes=(tf.TensorShape([BATCH_SIZE]), tf.TensorShape([BATCH_SIZE, 1])),
     )
 
-    # graph
-    optimizer = tf.optimizers.SGD(LEARNING_RATE)
+    # model
     model = Word2Vec(VOCAB_SIZE, EMBED_SIZE, NUM_SAMPLED)
 
     # train
-    print('training model ...')
+    print('Training model ...')
+    optimizer = tf.optimizers.SGD(LEARNING_RATE)
     writer = tf.summary.create_file_writer(
         'graphs/word2vec/lr' + str(optimizer.learning_rate.numpy())
     )
-    start_time = time.time()
+    skip_step = 100
     step = 0
-    total_loss = 0.0
-    for center_words, target_words in dataset:
-        if step > NUM_TRAIN_STEPS:
+    start_time = time.time()
+    for center_words, target_words in ds:
+        if step > N_EPOCHS:
             break
         loss = train_step(optimizer, model, center_words, target_words)
+        step += 1
+        if step % skip_step == 0 or step == N_EPOCHS:
+            print(f'{step} - loss: {(loss/step):.4f}')
         with writer.as_default():
             tf.summary.scalar('loss', loss, step=step)
-        total_loss += loss
-        if (step + 1) % SKIP_STEP == 0:
-            avg_loss = total_loss / SKIP_STEP
-            print(f'loss at step {step}: {avg_loss}')
-            total_loss = 0.0
-        step += 1
-        writer.flush()
+            writer.flush()
     end_time = time.time()
-    print(f'total time: {end_time - start_time}s')
+    print(f'Training time: {end_time - start_time}s')
     writer.close()
 
 
 if __name__ == '__main__':
     main()
-
-
-# %%

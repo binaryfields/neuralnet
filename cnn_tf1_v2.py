@@ -52,7 +52,9 @@ def model_net(x, n_classes):
 def model_fn(features, labels, mode):
     logits = model_net(features, labels.shape[1])
     loss = tf.reduce_mean(
-        tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=tf.cast(labels, tf.float32))
+        tf.nn.sigmoid_cross_entropy_with_logits(
+            logits=logits, labels=tf.cast(labels, tf.float32)
+        )
     )
     predictions = tf.greater(tf.nn.sigmoid(logits), tf.constant(0.5))
     if mode == tf.estimator.ModeKeys.PREDICT:
@@ -60,7 +62,9 @@ def model_fn(features, labels, mode):
     elif mode == tf.estimator.ModeKeys.EVAL:
         accuracy = tf.metrics.accuracy(labels=labels, predictions=predictions)
         eval_metric_ops = {'accuracy': accuracy}
-        return tf.estimator.EstimatorSpec(mode, loss=loss, eval_metric_ops=eval_metric_ops)
+        return tf.estimator.EstimatorSpec(
+            mode, loss=loss, eval_metric_ops=eval_metric_ops
+        )
     else:
         assert mode == tf.estimator.ModeKeys.TRAIN
         optimizer = tf.train.AdamOptimizer(learning_rate)
@@ -69,8 +73,11 @@ def model_fn(features, labels, mode):
 
 
 def load_dataset():
-    for (file_name, prefix) in [('images_train.h5', 'train_set'), ('images_test.h5', 'test_set')]:
-        model = h5py.File(f'datasets/{file_name}', 'r')
+    for (file_name, prefix) in [
+        ('images_train.h5', 'train_set'),
+        ('images_test.h5', 'test_set'),
+    ]:
+        model = h5py.File(f'data/{file_name}', 'r')
         x = np.array(model[prefix + '_x'][:], dtype=np.float32)
         x = x / 255
         y = np.array(model[prefix + '_y'][:], dtype=np.int32)
