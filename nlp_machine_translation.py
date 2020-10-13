@@ -207,8 +207,9 @@ def sample(
 
 
 def main():
-    num_epochs = 100
-    batch_size = 32
+    num_epochs = 500
+    early_stop_patience = 20
+    batch_size = 128
     n_a = 32
     n_s = 64
     t_x = 30
@@ -240,7 +241,10 @@ def main():
     c0 = tf.zeros((batch_size, n_s))
     train_ds = train_ds.map(lambda x, y: ((x, s0, c0), y))
     val_ds = val_ds.map(lambda x, y: ((x, s0, c0), y))
-    _ = model.fit(train_ds, epochs=num_epochs)
+    callbacks = [
+        keras.callbacks.EarlyStopping(monitor='loss', patience=early_stop_patience)
+    ]
+    _ = model.fit(train_ds, epochs=num_epochs, callbacks=callbacks)
     val_perf = model.evaluate(val_ds)
     performance = dict(zip(model.metrics_names, val_perf))
     print(f'Performance: {performance}')
